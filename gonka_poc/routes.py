@@ -4,6 +4,7 @@ Unlike V0 which uses MQLLMEngine with ZMQ RPC, V1 uses direct calls
 through the executor's collective_rpc mechanism.
 """
 import asyncio
+import logging
 import os
 import time
 import uuid
@@ -21,6 +22,36 @@ from vllm.gonka_poc.validation import run_validation
 logger = init_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/pow", tags=["PoC V1"])
+
+
+# ---------------------------------------------------------------------------
+# Suppress noisy uvicorn access logs for health/status endpoints
+# ---------------------------------------------------------------------------
+class _RateLimitHealthFilter(logging.Filter):
+    """Rate-limit GET /health and GET /api/v1/pow/status to once per minute."""
+    _QUIET_PATHS = ("GET /health", "GET /api/v1/pow/status")
+    _INTERVAL = 60  # seconds
+
+    def __init__(self):
+        super().__init__()
+        self._last_logged: dict[str, float] = {}
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        for path in self._QUIET_PATHS:
+            if path in msg:
+                now = time.monotonic()
+                last = self._last_logged.get(path, 0.0)
+                if now - last >= self._INTERVAL:
+                    self._last_logged[path] = now
+                    return True
+                return False
+        return True
+
+
+for _name in ("uvicorn.access", "uvicorn"):
+    _logger = logging.getLogger(_name)
+    _logger.addFilter(_RateLimitHealthFilter())
 
 POC_GENERATE_CHUNK_TIMEOUT_SEC = float(os.environ.get("POC_GENERATE_CHUNK_TIMEOUT_SEC", "60"))
 POC_CHAT_BUSY_BACKOFF_SEC = 0.05
