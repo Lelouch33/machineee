@@ -444,7 +444,7 @@ TMUX_SESSION="gonka"
 log_info "Starting Gonka in tmux session: $TMUX_SESSION"
 
 if tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    log_warning "Stopping existing session..."
+    log_warning "Stopping existing tmux session..."
     tmux kill-session -t "$TMUX_SESSION"
     sleep 2
 fi
@@ -453,7 +453,27 @@ log_info "Cleaning up orphaned processes..."
 pkill -9 -f "uvicorn api.app:app" 2>/dev/null || true
 pkill -9 -f "python.*pow" 2>/dev/null || true
 pkill -9 -f "python.*vllm" 2>/dev/null || true
+pkill -9 -f "vllm.entrypoints" 2>/dev/null || true
 sleep 3
+
+# Kill any remaining processes holding GPU memory
+log_info "Checking for processes on GPU..."
+GPU_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | sort -u)
+if [ -n "$GPU_PIDS" ]; then
+    log_warning "Found processes on GPU, killing: $GPU_PIDS"
+    echo "$GPU_PIDS" | xargs -I{} kill -9 {} 2>/dev/null || true
+    sleep 5
+    # Second check
+    GPU_PIDS=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | sort -u)
+    if [ -n "$GPU_PIDS" ]; then
+        log_error "Still have processes on GPU after kill: $GPU_PIDS"
+        log_error "Please manually stop these processes and re-run the script."
+        exit 1
+    fi
+    log_success "All GPU processes terminated"
+else
+    log_success "No processes on GPU"
+fi
 
 GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
 GPU_TOTAL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
