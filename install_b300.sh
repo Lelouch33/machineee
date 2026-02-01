@@ -367,7 +367,7 @@ LR
 log_info "Downloading Gonka app..."
 apt-get install -y skopeo
 
-GONKA_IMAGE="ghcr.io/product-science/mlnode@sha256:f86e2ece9d2507f76660347ae8ef8069eff54313f9285aa555c8d9838b902e3a"
+GONKA_IMAGE="ghcr.io/product-science/mlnode@sha256:62a8fdde702cfb6c858014c72ef1f7dc282ce12c21da232f9b5b0512db854e69"
 WORKDIR="$HOME/gonka"
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
@@ -388,6 +388,23 @@ else
         | xargs -0 -I{} tar -xf {} -C bundle/rootfs 2>/dev/null || true
     ls -la "$APP/packages" || { log_error "App extraction failed!"; exit 1; }
     log_success "Gonka app extracted to $APP"
+fi
+
+#################################
+# 15b. PATCH PROXY.PY — fix 502 timeout (60s → 600s)
+#################################
+PROXY_FILE="$APP/packages/api/src/api/proxy.py"
+if [ -f "$PROXY_FILE" ]; then
+    cp "$PROXY_FILE" "$PROXY_FILE.bak"
+    sed -i 's/return await vllm_client\.post(url, json=json_body, timeout=60)/return await vllm_client.post(url, json=json_body, timeout=600)/' "$PROXY_FILE"
+    if python3.12 -m py_compile "$PROXY_FILE" 2>/dev/null; then
+        log_success "proxy.py patched: call_backend POST timeout 60s → 600s"
+    else
+        log_error "proxy.py patch failed! Restoring backup..."
+        cp "$PROXY_FILE.bak" "$PROXY_FILE"
+    fi
+else
+    log_warning "proxy.py not found, skipping patch"
 fi
 
 #################################
