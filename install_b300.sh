@@ -421,20 +421,17 @@ if [ -f "$RUNNER_FILE" ]; then
     # Add comma after VLLM_HOST if missing
     sed -i 's/"--host", self.VLLM_HOST$/"--host", self.VLLM_HOST,/' "$RUNNER_FILE"
     
-    # Add --enforce-eager if not present
-    if ! grep -q '"--enforce-eager"' "$RUNNER_FILE"; then
-        sed -i '/"--host", self.VLLM_HOST,/a\                "--enforce-eager",' "$RUNNER_FILE"
+    # Add --max-num-batched-tokens 32768 (enables torch.compile + CUDA graphs)
+    if ! grep -q '"--max-num-batched-tokens"' "$RUNNER_FILE"; then
+        sed -i '/"--host", self.VLLM_HOST,/a\                "--max-num-batched-tokens", "32768",' "$RUNNER_FILE"
     fi
-    
+
     # Change V1 mode
     sed -i 's/env\["VLLM_USE_V1"\] = "0"/env["VLLM_USE_V1"] = "1"/' "$RUNNER_FILE"
-    
+
     # Add env vars if not present
-    if ! grep -q 'VLLM_USE_CUDA_GRAPHS' "$RUNNER_FILE"; then
-        sed -i '/env\["VLLM_USE_V1"\] = "1"/a\            env["VLLM_USE_CUDA_GRAPHS"] = "0"' "$RUNNER_FILE"
-    fi
     if ! grep -q 'VLLM_ALLOW_INSECURE_SERIALIZATION' "$RUNNER_FILE"; then
-        sed -i '/env\["VLLM_USE_CUDA_GRAPHS"\] = "0"/a\            env["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"' "$RUNNER_FILE"
+        sed -i '/env\["VLLM_USE_V1"\] = "1"/a\            env["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"' "$RUNNER_FILE"
     fi
     
     # Verify syntax
