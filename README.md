@@ -1,6 +1,16 @@
 # Machine PoC V1
 
-PoC (Proof of Computation) module for vLLM V1 engine (vLLM 0.14.0+).
+Gonka PoC (Proof of Computation) module for vLLM V1 engine. Enables MLNode integration with vLLM 0.14.0+ for blockchain computation verification.
+
+## Quick Start
+
+```bash
+git clone https://github.com/Lelouch33/machineee.git
+cd machineee
+sudo bash install.sh
+```
+
+The script auto-detects your GPU (B300/H100/A100) and installs everything.
 
 ## Overview
 
@@ -101,19 +111,19 @@ machineee/
 ├── install.sh              # Auto-detect GPU and install
 ├── install_b300.sh         # Blackwell B300/B200 install
 ├── install_universal.sh    # H100/H200/A100 install
-├── README.md               # This file
-├── gonka_poc/
-│   ├── __init__.py         # Module exports
-│   ├── config.py           # Configuration classes
-│   ├── data.py             # Data structures and encoding
-│   ├── gpu_random.py       # Deterministic GPU random generation
-│   ├── layer_hooks.py      # Layer transformation hooks
-│   ├── manager.py          # PoCManagerV1 for V1 engine
-│   ├── poc_model_runner.py # Forward pass with EmbeddingInjectionHook
-│   ├── routes.py           # FastAPI routes
-│   └── validation.py       # Artifact validation
-└── patches/
-    └── runner_patch.md     # MLNode runner.py patch documentation
+├── README.md
+└── gonka_poc/
+    ├── __init__.py         # Module exports
+    ├── callbacks.py        # Callback queue for artifact delivery
+    ├── config.py           # Configuration classes
+    ├── data.py             # Data structures and encoding
+    ├── generate_queue.py   # Queue-based /generate processing
+    ├── gpu_random.py       # Deterministic GPU random generation
+    ├── layer_hooks.py      # Layer transformation hooks
+    ├── manager.py          # PoCManagerV1 for V1 engine
+    ├── poc_model_runner.py # Forward pass with EmbeddingInjectionHook
+    ├── routes.py           # FastAPI routes
+    └── validation.py       # Artifact validation
 ```
 
 ## V1 Engine Changes
