@@ -464,6 +464,14 @@ else
     log_success "No processes on GPU"
 fi
 
+# Clean vLLM and torch compile cache to avoid stale artifacts
+log_info "Cleaning vLLM/torch compile cache..."
+rm -rf ~/.cache/vllm 2>/dev/null || true
+rm -rf ~/.cache/torch/inductor 2>/dev/null || true
+rm -rf /root/.cache/vllm 2>/dev/null || true
+rm -rf /root/.cache/torch/inductor 2>/dev/null || true
+log_success "Cache cleaned"
+
 GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || true)
 GPU_TOTAL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || true)
 log_info "GPU memory: ${GPU_USED}MB used / ${GPU_TOTAL}MB total"
