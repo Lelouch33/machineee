@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-# Gonka Node — vLLM 0.14.0 + CUDA 13.0 + Gonka PoC Module (V1 Engine)
+# Gonka Node — vLLM 0.14.0 + Gonka PoC Module (V1 Engine)
 # OPTIMIZED FOR: B300/B200 (Blackwell architecture, SM 10.x)
+# NOTE: CUDA Toolkit NOT required — vLLM wheels include bundled CUDA runtime
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 VLLM_VERSION="0.14.0"
-CUDA_VERSION="13.0"
 SCRIPT_NAME="install_b300"
 
 #################################
@@ -35,7 +35,7 @@ fi
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║     Gonka Node — vLLM ${VLLM_VERSION} + CUDA ${CUDA_VERSION}                      ║"
+echo "║     Gonka Node — vLLM ${VLLM_VERSION} (wheels with bundled CUDA)       ║"
 echo "║     OPTIMIZED FOR: B300/B200 (Blackwell SM 10.x)                 ║"
 echo "║     WITH: gonka_poc module (V1 Engine)                           ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
@@ -60,34 +60,17 @@ apt-get install -y --no-install-recommends \
     software-properties-common
 
 #################################
-# 2. CUDA TOOLKIT
+# 2. CUDA_HOME (for environment, not required for vLLM)
 #################################
-if [ ! -d "/usr/local/cuda-13.0" ]; then
-    log_warning "CUDA 13.0 toolkit not found. Installing..."
-    if ! dpkg -l | grep -q cuda-keyring; then
-        log_info "Adding NVIDIA repository..."
-        wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb
-        dpkg -i /tmp/cuda-keyring.deb
-        apt-get update
-    fi
-    log_info "Installing CUDA 13.0 toolkit..."
-    apt-get install -y cuda-toolkit-13-0
-    log_success "CUDA 13.0 installed"
-fi
-
-# Set CUDA_HOME
-if [ -d "/usr/local/cuda-13.0" ]; then
-    CUDA_HOME="/usr/local/cuda-13.0"
-elif [ -d "/usr/local/cuda-12.6" ]; then
-    CUDA_HOME="/usr/local/cuda-12.6"
-    log_warning "Using CUDA 12.6"
-elif [ -d "/usr/local/cuda" ]; then
+# vLLM wheels include bundled CUDA runtime — no CUDA Toolkit needed
+# Just set CUDA_HOME if available (for other tools)
+if [ -d "/usr/local/cuda" ]; then
     CUDA_HOME="/usr/local/cuda"
+    log_info "CUDA_HOME: $CUDA_HOME (optional, vLLM uses bundled CUDA)"
 else
-    log_error "CUDA not found"
-    exit 1
+    CUDA_HOME=""
+    log_info "CUDA Toolkit not found — OK, vLLM uses bundled CUDA runtime"
 fi
-log_info "CUDA_HOME: $CUDA_HOME"
 
 #################################
 # 3. ULIMIT
@@ -143,10 +126,10 @@ log_info "NVIDIA Driver: $DRIVER_VERSION_FULL"
 
 MIN_DRIVER_MAJOR=565
 if [ "$DRIVER_MAJOR" -lt "$MIN_DRIVER_MAJOR" ]; then
-    log_error "Driver too old for CUDA ${CUDA_VERSION}!"
+    log_error "Driver too old for Blackwell! Minimum: ${MIN_DRIVER_MAJOR}"
     exit 1
 fi
-log_success "Driver supports CUDA ${CUDA_VERSION}"
+log_success "Driver version OK for Blackwell"
 
 #################################
 # 6. ENVIRONMENT
@@ -168,7 +151,7 @@ rm -rf /usr/lib/python3/dist-packages/triton* 2>/dev/null || true
 #################################
 # 8. INSTALL PYTORCH + VLLM
 #################################
-log_info "Installing vLLM ${VLLM_VERSION} with CUDA ${CUDA_VERSION}..."
+log_info "Installing vLLM ${VLLM_VERSION} (wheels with bundled CUDA)..."
 uv pip install --python python3.12 --system --break-system-packages --index-strategy unsafe-best-match \
     vllm==${VLLM_VERSION} \
     --extra-index-url https://wheels.vllm.ai/${VLLM_VERSION}/cu130 \
@@ -508,7 +491,7 @@ export LD_LIBRARY_PATH='$CUDA_HOME/lib64:\${LD_LIBRARY_PATH:-}'
 [ '$FLASHINFER_AVAILABLE' = '1' ] && export VLLM_ATTENTION_BACKEND=FLASHINFER
 echo '══════════════════════════════════════════════════════════════'
 echo 'Gonka Node — B300 Blackwell (V1 Engine)'
-echo \"vLLM: $ACTUAL_VLLM | CUDA: ${CUDA_VERSION}\"
+echo \"vLLM: $ACTUAL_VLLM (bundled CUDA)\"
 echo \"gonka_poc: $GONKA_POC_CHECK\"
 echo '══════════════════════════════════════════════════════════════'
 /usr/bin/python3.12 -m uvicorn api.app:app --host 127.0.0.1 --port 8080
