@@ -496,7 +496,7 @@ export TRANSFORMERS_CACHE='$HF_CACHE'
 export CUDA_HOME='$CUDA_HOME'
 export PATH='$CUDA_HOME/bin:/usr/local/bin:/usr/bin:/bin'
 export LD_LIBRARY_PATH='$CUDA_HOME/lib64:\${LD_LIBRARY_PATH:-}'
-export VLLM_ATTENTION_BACKEND=FLASH_ATTN
+export VLLM_ATTENTION_BACKEND=FLASHINFER
 echo '══════════════════════════════════════════════════════════════'
 echo 'Gonka Node — B300 Blackwell (V1 Engine)'
 echo \"vLLM: $ACTUAL_VLLM (bundled CUDA)\"
