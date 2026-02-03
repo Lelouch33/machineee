@@ -406,18 +406,18 @@ if [ -f "$RUNNER_FILE" ]; then
         sed -i '/"--host", self.VLLM_HOST,/a\                "--max-num-batched-tokens", "32768",' "$RUNNER_FILE"
     fi
 
+    # Add --attention-config.backend TRITON_ATTN (works with FP8 KV cache on H100)
+    # Note: FLASHINFER doesn't support FP8 KV cache on SM90 (GMMA limitation)
+    if ! grep -q '"--attention-config.backend"' "$RUNNER_FILE"; then
+        sed -i '/"--max-num-batched-tokens", "32768",/a\                "--attention-config.backend", "TRITON_ATTN",' "$RUNNER_FILE"
+    fi
+
     # Change V1 mode
     sed -i 's/env\["VLLM_USE_V1"\] = "0"/env["VLLM_USE_V1"] = "1"/' "$RUNNER_FILE"
 
     # Add env vars if not present
     if ! grep -q 'VLLM_ALLOW_INSECURE_SERIALIZATION' "$RUNNER_FILE"; then
         sed -i '/env\["VLLM_USE_V1"\] = "1"/a\            env["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"' "$RUNNER_FILE"
-    fi
-
-    # Force TRITON_ATTN attention backend (works with FP8 KV cache on H100)
-    # Note: FLASHINFER doesn't support FP8 KV cache on SM90 (GMMA limitation)
-    if ! grep -q 'VLLM_ATTENTION_BACKEND' "$RUNNER_FILE"; then
-        sed -i '/env\["VLLM_ALLOW_INSECURE_SERIALIZATION"\] = "1"/a\            env["VLLM_ATTENTION_BACKEND"] = "TRITON_ATTN"' "$RUNNER_FILE"
     fi
 
     # Verify syntax

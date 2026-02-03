@@ -414,17 +414,17 @@ if [ -f "$RUNNER_FILE" ]; then
         sed -i '/"--host", self.VLLM_HOST,/a\                "--max-num-batched-tokens", "32768",' "$RUNNER_FILE"
     fi
 
+    # Add --attention-config.backend FLASHINFER (works on Blackwell SM 10.x)
+    if ! grep -q '"--attention-config.backend"' "$RUNNER_FILE"; then
+        sed -i '/"--max-num-batched-tokens", "32768",/a\                "--attention-config.backend", "FLASHINFER",' "$RUNNER_FILE"
+    fi
+
     # Change V1 mode
     sed -i 's/env\["VLLM_USE_V1"\] = "0"/env["VLLM_USE_V1"] = "1"/' "$RUNNER_FILE"
 
     # Add env vars if not present
     if ! grep -q 'VLLM_ALLOW_INSECURE_SERIALIZATION' "$RUNNER_FILE"; then
         sed -i '/env\["VLLM_USE_V1"\] = "1"/a\            env["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"' "$RUNNER_FILE"
-    fi
-
-    # Force FLASHINFER attention backend (required for FP8 models with CUDA graphs)
-    if ! grep -q 'VLLM_ATTENTION_BACKEND' "$RUNNER_FILE"; then
-        sed -i '/env\["VLLM_ALLOW_INSECURE_SERIALIZATION"\] = "1"/a\            env["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"' "$RUNNER_FILE"
     fi
 
     # Verify syntax
