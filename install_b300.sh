@@ -57,7 +57,8 @@ apt-get update
 apt-get install -y --no-install-recommends \
     ca-certificates curl git jq tar wget \
     nginx tmux lsof \
-    software-properties-common
+    software-properties-common \
+    build-essential
 
 #################################
 # 2. CUDA_HOME (for environment, not required for vLLM)
