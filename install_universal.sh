@@ -59,7 +59,7 @@ apt-get install -y --no-install-recommends \
     ca-certificates curl git jq tar wget \
     nginx tmux lsof \
     software-properties-common \
-    build-essential
+    build-essential g++ gcc cpp
 
 #################################
 # 2. CUDA_HOME (for environment, not required for vLLM)
@@ -465,12 +465,15 @@ else
     log_success "No processes on GPU"
 fi
 
-# Clean vLLM and torch compile cache to avoid stale artifacts
-log_info "Cleaning vLLM/torch compile cache..."
+# Clean vLLM, torch compile, and FlashInfer JIT cache to avoid stale artifacts
+log_info "Cleaning vLLM/torch/FlashInfer compile cache..."
 rm -rf ~/.cache/vllm 2>/dev/null || true
 rm -rf ~/.cache/torch/inductor 2>/dev/null || true
+rm -rf ~/.cache/flashinfer 2>/dev/null || true
 rm -rf /root/.cache/vllm 2>/dev/null || true
 rm -rf /root/.cache/torch/inductor 2>/dev/null || true
+rm -rf /root/.cache/flashinfer 2>/dev/null || true
+rm -rf /tmp/flashinfer* 2>/dev/null || true
 log_success "Cache cleaned"
 
 GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || true)
@@ -489,7 +492,6 @@ export TRANSFORMERS_CACHE='$HF_CACHE'
 export CUDA_HOME='$CUDA_HOME'
 export PATH='$CUDA_HOME/bin:/usr/local/bin:/usr/bin:/bin'
 export LD_LIBRARY_PATH='$CUDA_HOME/lib64:\${LD_LIBRARY_PATH:-}'
-export VLLM_ATTENTION_BACKEND=FLASHINFER
 echo '══════════════════════════════════════════════════════════════'
 echo 'Gonka Node — Universal (V1 Engine)'
 echo \"vLLM: $ACTUAL_VLLM (bundled CUDA)\"
