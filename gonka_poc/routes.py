@@ -18,6 +18,8 @@ from vllm.logger import init_logger
 from vllm.gonka_poc.config import PoCState
 from vllm.gonka_poc.data import Artifact, DEFAULT_DIST_THRESHOLD, DEFAULT_P_MISMATCH, DEFAULT_FRAUD_THRESHOLD
 from vllm.gonka_poc.validation import run_validation
+from vllm.gonka_poc.callbacks import CallbackSender
+from vllm.gonka_poc.generate_queue import GenerateJob, get_queue, clear_queue, POC_MAX_QUEUED_NONCES
 
 logger = init_logger(__name__)
 
@@ -263,6 +265,10 @@ async def _cancel_poc_tasks(app_id: int):
                 await tasks["gen_task"]
             except asyncio.CancelledError:
                 pass
+        if tasks.get("callback_sender"):
+            tasks["callback_sender"].clear()
+    # Clear generate queue on stop
+    await clear_queue()
 
 
 async def _compute_artifacts_chunk(
@@ -295,6 +301,7 @@ async def _compute_artifacts_chunk(
 async def _generation_loop(
     poc_manager,
     stop_event: asyncio.Event,
+    callback_sender: Optional[CallbackSender],
     config: dict,
     stats: dict,
 ):
@@ -329,6 +336,15 @@ async def _generation_loop(
                 logger.error(f"PoC V1 generation error: {e}")
                 await asyncio.sleep(POC_CHAT_BUSY_BACKOFF_SEC)
                 continue
+
+            # Send artifacts to callback URL for blockchain commit
+            if artifacts and callback_sender:
+                callback_sender.add_artifacts(artifacts, {
+                    "public_key": config["public_key"],
+                    "block_hash": config["block_hash"],
+                    "block_height": config["block_height"],
+                    "node_id": config["node_id"],
+                })
 
             stats["total_processed"] += len(nonces)
 
@@ -380,12 +396,22 @@ async def init_generate(request: Request, body: PoCInitGenerateRequest) -> dict:
     stats = {"start_time": 0, "total_processed": 0}
     stop_event = asyncio.Event()
 
+    # Create callback sender if URL provided (for sending artifacts to decentralized-api)
+    callback_sender = None
+    callback_task = None
+    if body.url:
+        callback_sender = CallbackSender(body.url, stop_event, body.params.k_dim)
+        callback_task = asyncio.create_task(callback_sender.run())
+        logger.info(f"PoC V1 callback sender started for {body.url}")
+
     gen_task = asyncio.create_task(
-        _generation_loop(poc_manager, stop_event, config, stats)
+        _generation_loop(poc_manager, stop_event, callback_sender, config, stats)
     )
 
     _poc_tasks[app_id] = {
         "gen_task": gen_task,
+        "callback_task": callback_task,
+        "callback_sender": callback_sender,
         "stop_event": stop_event,
         "config": config,
         "stats": stats,
@@ -396,7 +422,7 @@ async def init_generate(request: Request, body: PoCInitGenerateRequest) -> dict:
 
 @router.post("/generate")
 async def generate(request: Request, body: PoCGenerateRequest) -> dict:
-    logger.info(f"PoC V1 /generate: {body.block_hash}, {body.block_height}, {body.public_key}, {body.node_id}, {body.node_count}, {body.nonces}, {body.params}, {body.batch_size}, {body.wait}, {body.validation}, {body.stat_test}")
+    logger.info(f"PoC V1 /generate: {body.block_hash}, {body.block_height}, {body.public_key}, {body.node_id}, {body.node_count}, nonces={len(body.nonces)}, {body.params}, {body.batch_size}, {body.wait}, {body.url}, validation={body.validation is not None}, {body.stat_test}")
     check_params_match(request, body.params)
 
     poc_manager = get_poc_manager(request)
@@ -410,11 +436,52 @@ async def generate(request: Request, body: PoCGenerateRequest) -> dict:
     validation_map = {a.nonce: a.vector_b64 for a in body.validation.artifacts} if body.validation else None
     stat_test = body.stat_test or StatTestModel()
 
+    # Non-wait mode: use queue (как в оригинале)
     if not body.wait:
-        # For non-wait mode, we just queue and return immediately
-        # In V1, we don't have a separate queue system like V0
-        # For simplicity, we just do synchronous generation
-        pass
+        queue = get_queue()
+        queue.set_generation_active_check(_is_generation_active)
+
+        if queue.queued_nonces + len(body.nonces) > POC_MAX_QUEUED_NONCES:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Queue full: {queue.queued_nonces} nonces queued, limit is {POC_MAX_QUEUED_NONCES}"
+            )
+
+        job = GenerateJob(
+            request_id=str(uuid.uuid4()),
+            poc_manager=poc_manager,
+            app_id=app_id,
+            block_hash=body.block_hash,
+            block_height=body.block_height,
+            public_key=body.public_key,
+            node_id=body.node_id,
+            node_count=body.node_count,
+            nonces=body.nonces,
+            seq_len=body.params.seq_len,
+            k_dim=body.params.k_dim,
+            batch_size=body.batch_size,
+            validation_artifacts=validation_map,
+            stat_test_dist_threshold=stat_test.dist_threshold,
+            stat_test_p_mismatch=stat_test.p_mismatch,
+            stat_test_fraud_threshold=stat_test.fraud_threshold,
+            callback_url=body.url,
+        )
+
+        request_id = await queue.enqueue(job)
+        if request_id is None:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Queue full: {queue.queued_nonces} nonces queued, limit is {POC_MAX_QUEUED_NONCES}"
+            )
+
+        await queue.ensure_worker_running(poc_manager, app_id)
+
+        return {"status": "queued", "request_id": request_id, "queued_count": len(body.nonces)}
+
+    # Wait mode: direct processing (как в оригинале)
+    # Сначала ждём пока init/generate не закончится
+    while _is_generation_active(app_id):
+        await asyncio.sleep(0.1)
 
     total_nonces = len(body.nonces)
     n_chunks = (total_nonces + body.batch_size - 1) // body.batch_size
@@ -426,6 +493,10 @@ async def generate(request: Request, body: PoCGenerateRequest) -> dict:
     for i in range(0, total_nonces, body.batch_size):
         chunk = body.nonces[i:i + body.batch_size]
         chunk_idx = i // body.batch_size
+
+        # Ждём если init/generate снова запустился
+        while _is_generation_active(app_id):
+            await asyncio.sleep(0.1)
 
         try:
             artifacts = await _compute_artifacts_chunk(
@@ -464,6 +535,24 @@ async def generate(request: Request, body: PoCGenerateRequest) -> dict:
         "request_id": str(uuid.uuid4()),
         **validation_result,
     }
+
+
+@router.get("/generate/{request_id}")
+async def get_generate_result(request: Request, request_id: str) -> dict:
+    """Get result for a queued /generate request."""
+    queue = get_queue()
+    record = queue.get_result(request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Request {request_id} not found")
+
+    response = {"status": record.status, "request_id": request_id}
+
+    if record.status == "completed" and record.result:
+        response.update(record.result)
+    elif record.status == "failed" and record.error:
+        response["error"] = record.error
+
+    return response
 
 
 @router.get("/status")
