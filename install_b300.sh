@@ -57,8 +57,12 @@ apt-get update
 apt-get install -y --no-install-recommends \
     ca-certificates curl git jq tar wget \
     nginx tmux lsof \
-    software-properties-common \
-    build-essential g++ gcc cpp
+    software-properties-common
+
+# Install build-essential separately WITHOUT --no-install-recommends
+# Required for FlashInfer JIT compilation (needs cc1plus)
+log_info "Installing build-essential for FlashInfer JIT..."
+apt-get install -y build-essential g++ gcc
 
 #################################
 # 2. CUDA_HOME (for environment, not required for vLLM)
