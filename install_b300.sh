@@ -417,7 +417,12 @@ if [ -f "$RUNNER_FILE" ]; then
     if ! grep -q 'VLLM_ALLOW_INSECURE_SERIALIZATION' "$RUNNER_FILE"; then
         sed -i '/env\["VLLM_USE_V1"\] = "1"/a\            env["VLLM_ALLOW_INSECURE_SERIALIZATION"] = "1"' "$RUNNER_FILE"
     fi
-    
+
+    # Force FLASHINFER attention backend (required for FP8 models with CUDA graphs)
+    if ! grep -q 'VLLM_ATTENTION_BACKEND' "$RUNNER_FILE"; then
+        sed -i '/env\["VLLM_ALLOW_INSECURE_SERIALIZATION"\] = "1"/a\            env["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"' "$RUNNER_FILE"
+    fi
+
     # Verify syntax
     if python3.12 -m py_compile "$RUNNER_FILE" 2>/dev/null; then
         log_success "runner.py patched for V1 engine"
