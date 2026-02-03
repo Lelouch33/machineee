@@ -112,7 +112,7 @@ nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv,nohea
 GPU_COUNT=$(nvidia-smi -L | wc -l)
 log_success "Found $GPU_COUNT GPUs"
 
-GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)
 log_info "GPU Model: $GPU_NAME"
 
 # Block Blackwell GPUs (use install_b300.sh instead)
@@ -129,7 +129,7 @@ else
     log_info "GPU Model: $GPU_NAME - proceeding with universal config"
 fi
 
-DRIVER_VERSION_FULL=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1)
+DRIVER_VERSION_FULL=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 || true)
 DRIVER_MAJOR=$(echo "$DRIVER_VERSION_FULL" | cut -d'.' -f1)
 log_info "NVIDIA Driver: $DRIVER_VERSION_FULL"
 
@@ -464,8 +464,8 @@ else
     log_success "No processes on GPU"
 fi
 
-GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits | head -1)
-GPU_TOTAL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | head -1)
+GPU_USED=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1 || true)
+GPU_TOTAL=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || true)
 log_info "GPU memory: ${GPU_USED}MB used / ${GPU_TOTAL}MB total"
 
 FLASHINFER_AVAILABLE=$(python3.12 -c "import flashinfer" 2>/dev/null && echo "1" || echo "0")
