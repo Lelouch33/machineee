@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo view:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:node4.gonka.ai)",
+      "Bash(docker rm:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker pull:*)",
+      "mcp__ai-research__search_github",
+      "Bash(gh search code:*)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(docker create:*)",
+      "Bash(docker cp:*)",
+      "Bash(tar:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker start:*)",
+      "Bash(timeout:*)",
+      "Bash(docker export:*)",
+      "Bash(dir \"C:\\\\Users\\\\lelou\\\\gonka\\\\Userslelougonkamachineee\\\\mlnode_export.tar\")",
+      "Bash(docker run:*)",
+      "Bash(gh api:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git checkout:*)",
+      "mcp__ai-research__search_forums",
+      "WebSearch",
+      "mcp__ai-research__search_docs",
+      "Bash(git add:*)",
+      "Bash(find:*)"
+    ]
+  }
+}

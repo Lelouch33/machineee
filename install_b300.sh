@@ -69,44 +69,31 @@ apt-get install -y build-essential g++ gcc
 #################################
 CUDA_VERSION="13-0"
 CUDA_PATH="/usr/local/cuda-13.0"
-CUDA_PATH_ALT="/usr/local/cuda"
 
+# Check if CUDA 13.0 is installed
 if [ -d "$CUDA_PATH" ] && [ -x "$CUDA_PATH/bin/nvcc" ]; then
     NVCC_VERSION=$("$CUDA_PATH/bin/nvcc" --version | grep "release" | sed 's/.*release //' | sed 's/,.*//')
     log_success "CUDA 13.0 Toolkit found: $NVCC_VERSION"
-    CUDA_HOME="$CUDA_PATH"
-    ln -sf "$CUDA_PATH" /usr/local/cuda
-elif [ -d "$CUDA_PATH_ALT" ] && [ -x "$CUDA_PATH_ALT/bin/nvcc" ]; then
-    NVCC_VERSION=$("$CUDA_PATH_ALT/bin/nvcc" --version | grep "release" | sed 's/.*release //' | sed 's/,.*//')
-    if [[ "$NVCC_VERSION" == 13.* ]]; then
-        log_success "CUDA 13.x Toolkit found: $NVCC_VERSION"
-        CUDA_HOME="$CUDA_PATH_ALT"
-    else
-        log_error "CUDA $NVCC_VERSION found, but Blackwell requires CUDA 13.0+"
-        log_error "Please install CUDA 13.0+ manually for SM 10.x support"
-        exit 1
-    fi
 else
-    log_info "CUDA 13.0 Toolkit not found, attempting install..."
+    log_info "Installing CUDA 13.0 Toolkit..."
 
-    # Try NVIDIA CUDA repository (CUDA 13.0 may not be available yet)
-    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb 2>/dev/null
-    dpkg -i /tmp/cuda-keyring.deb 2>/dev/null || true
+    # Add NVIDIA CUDA repository
+    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb
+    dpkg -i /tmp/cuda-keyring.deb || true
     apt-get update
 
-    # Try to install CUDA 13.0
+    # Install CUDA 13.0
     if apt-cache show cuda-toolkit-${CUDA_VERSION} &>/dev/null; then
         apt-get install -y cuda-toolkit-${CUDA_VERSION}
-        CUDA_HOME="/usr/local/cuda-${CUDA_VERSION//-/.}"
-        ln -sf "$CUDA_HOME" /usr/local/cuda
         log_success "CUDA 13.0 Toolkit installed"
     else
         log_error "CUDA 13.0 not available in repository!"
-        log_error "Blackwell (B300) requires CUDA 13.0+ for SM 10.x support."
-        log_error "Please install CUDA 13.0 manually from NVIDIA."
         exit 1
     fi
 fi
+
+CUDA_HOME="$CUDA_PATH"
+ln -sf "$CUDA_PATH" /usr/local/cuda
 
 #################################
 # 3. ULIMIT

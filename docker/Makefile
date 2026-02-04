@@ -14,48 +14,34 @@ VLLM_VERSION := 0.14.0
 # Build targets
 # ═══════════════════════════════════════════════════════════════════════════
 
-.PHONY: build-universal build-b300 push clean
+.PHONY: build push clean
 
-# Universal build (H100/H200/A100 with TRITON_ATTN)
-build-universal:
+# Build for H100/H200/A100 (TRITON_ATTN)
+build:
 	docker build \
 		-f Dockerfile.universal \
 		--build-arg CUDA_VERSION=$(CUDA_VERSION) \
 		--build-arg VLLM_VERSION=$(VLLM_VERSION) \
-		-t $(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-universal \
+		-t $(REGISTRY)/$(IMAGE_NAME):v$(VERSION) \
 		-t $(REGISTRY)/$(IMAGE_NAME):latest \
-		..
-
-# B300 Blackwell build (with FLASHINFER)
-build-b300:
-	docker build \
-		-f Dockerfile.b300 \
-		--build-arg CUDA_VERSION=$(CUDA_VERSION) \
-		--build-arg VLLM_VERSION=$(VLLM_VERSION) \
-		-t $(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-b300 \
 		..
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Push targets
 # ═══════════════════════════════════════════════════════════════════════════
 
-push-universal:
-	docker push $(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-universal
+push:
+	docker push $(REGISTRY)/$(IMAGE_NAME):v$(VERSION)
 	docker push $(REGISTRY)/$(IMAGE_NAME):latest
-
-push-b300:
-	docker push $(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-b300
-
-push: push-universal push-b300
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Test targets
 # ═══════════════════════════════════════════════════════════════════════════
 
-test-universal:
+test:
 	docker run --rm --gpus all \
 		-e NVIDIA_VISIBLE_DEVICES=0 \
-		$(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-universal \
+		$(REGISTRY)/$(IMAGE_NAME):v$(VERSION) \
 		python3 -c "from vllm.gonka_poc import PoCManagerV1; print('PoC V1 OK')"
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -72,9 +58,9 @@ clean:
 	docker builder prune -f
 
 # Shell into container
-shell-universal:
+shell:
 	docker run --rm -it --gpus all \
-		$(REGISTRY)/$(IMAGE_NAME):v$(VERSION)-universal \
+		$(REGISTRY)/$(IMAGE_NAME):v$(VERSION) \
 		/bin/bash
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -89,8 +75,8 @@ info:
 	@echo "CUDA:     $(CUDA_VERSION)"
 	@echo ""
 	@echo "Targets:"
-	@echo "  make build-universal  - Build for H100/A100"
-	@echo "  make build-b300       - Build for B300 Blackwell"
-	@echo "  make push             - Push all images"
-	@echo "  make test-universal   - Test universal image"
-	@echo "  make sizes            - Show image sizes"
+	@echo "  make build  - Build image"
+	@echo "  make push   - Push to registry"
+	@echo "  make test   - Test image"
+	@echo "  make shell  - Interactive shell"
+	@echo "  make sizes  - Show image sizes"

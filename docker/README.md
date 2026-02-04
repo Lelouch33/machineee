@@ -33,13 +33,7 @@
 cd docker
 
 # Для H100/H200/A100
-make build-universal
-
-# Для B300 Blackwell
-make build-b300
-
-# Все образы
-make build-universal build-b300
+make build
 ```
 
 ## Структура
@@ -47,7 +41,6 @@ make build-universal build-b300
 ```
 docker/
 ├── Dockerfile.universal  # H100/H200/A100 (TRITON_ATTN)
-├── Dockerfile.b300       # B300 Blackwell (FLASHINFER)
 ├── Makefile              # Build commands
 └── README.md
 ```
@@ -58,10 +51,10 @@ docker/
 # Запуск с GPU
 docker run --gpus all -p 8080:8080 -p 5000:5000 \
     -v /root/.cache:/root/.cache \
-    ghcr.io/lelouch33/gonka-mlnode:v0.14.0-universal
+    ghcr.io/lelouch33/gonka-mlnode:v0.14.0
 
 # Интерактивный shell
-make shell-universal
+make shell
 ```
 
 ## Переменные окружения
