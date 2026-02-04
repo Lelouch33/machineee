@@ -1,0 +1,151 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Gonka MLNode — vLLM 0.14.0 + PoC V1 Engine
+# UNIVERSAL: H100/H200/A100 (TRITON_ATTN backend)
+# Optimized: ~12-15GB vs 52GB original
+# ═══════════════════════════════════════════════════════════════════════════
+ARG CUDA_VERSION=13.0.0
+ARG UBUNTU_VERSION=22.04
+ARG PYTHON_VERSION=3.12
+ARG VLLM_VERSION=0.14.0
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS base
+
+ARG PYTHON_VERSION
+ARG VLLM_VERSION
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 1. System packages
+# ═══════════════════════════════════════════════════════════════════════════
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    wget \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    python${PYTHON_VERSION} \
+    python${PYTHON_VERSION}-venv \
+    python${PYTHON_VERSION}-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build essentials for Triton JIT (g++-12 for CUDA 13 compatibility)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    g++-12 \
+    gcc-12 \
+    ninja-build \
+    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100 \
+    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set python3.12 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 2. Install uv package manager
+# ═══════════════════════════════════════════════════════════════════════════
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. Install vLLM + PyTorch + dependencies
+# ═══════════════════════════════════════════════════════════════════════════
+RUN uv pip install --system --break-system-packages --index-strategy unsafe-best-match \
+    vllm==${VLLM_VERSION} \
+    --extra-index-url https://wheels.vllm.ai/${VLLM_VERSION}/cu130 \
+    --extra-index-url https://download.pytorch.org/whl/cu130
+
+# Core dependencies (already in vLLM, but ensure versions)
+RUN uv pip install --system --break-system-packages --index-strategy unsafe-best-match \
+    uvicorn \
+    fastapi \
+    starlette \
+    pydantic \
+    scipy \
+    accelerate \
+    tiktoken \
+    transformers \
+    aiohttp \
+    httpx[http2] \
+    grpcio \
+    grpcio-tools \
+    protobuf
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. Install FlashInfer + Triton
+# ═══════════════════════════════════════════════════════════════════════════
+RUN uv pip install --system --break-system-packages --index-strategy unsafe-best-match \
+    flashinfer-python==0.5.3 \
+    --extra-index-url https://flashinfer.ai/whl/cu130/torch2.5/
+
+RUN uv pip install --system --break-system-packages --index-strategy unsafe-best-match \
+    triton \
+    optree
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. MLNode unique dependencies (NOT in vLLM)
+# ═══════════════════════════════════════════════════════════════════════════
+RUN uv pip install --system --break-system-packages \
+    fire \
+    toml \
+    h2 \
+    tenacity \
+    nvidia-ml-py \
+    tqdm \
+    openai
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Install gonka_poc module
+# ═══════════════════════════════════════════════════════════════════════════
+COPY gonka_poc/ /usr/local/lib/python${PYTHON_VERSION}/dist-packages/vllm/gonka_poc/
+
+# Patch api_server.py to include gonka_poc routes
+RUN VLLM_PATH=$(python3 -c "import vllm; print(vllm.__path__[0])") && \
+    API_SERVER="$VLLM_PATH/entrypoints/openai/api_server.py" && \
+    cp "$API_SERVER" "$API_SERVER.bak" && \
+    # Find last import line and add our import after it
+    LAST_IMPORT=$(grep -n "^from " "$API_SERVER" | tail -1 | cut -d: -f1) && \
+    sed -i "${LAST_IMPORT}a from vllm.gonka_poc.routes import router as gonka_poc_router" "$API_SERVER" && \
+    # Add router registration after existing router
+    sed -i '/app.include_router(router)/a\    app.include_router(gonka_poc_router)' "$API_SERVER" && \
+    # Verify syntax
+    python3 -m py_compile "$API_SERVER"
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Copy MLNode packages (code only, deps already installed)
+# ═══════════════════════════════════════════════════════════════════════════
+COPY mlnode/packages/api/src /app/packages/api/src
+COPY mlnode/packages/pow/src /app/packages/pow/src
+COPY mlnode/packages/common/src /app/packages/common/src
+COPY mlnode/packages/train/src /app/packages/train/src
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Environment configuration
+# ═══════════════════════════════════════════════════════════════════════════
+ENV PYTHONPATH="/app/packages/api/src:/app/packages/pow/src:/app/packages/common/src:/app/packages/train/src"
+
+# vLLM V1 Engine settings
+ENV VLLM_USE_V1=1
+ENV VLLM_ALLOW_INSECURE_SERIALIZATION=1
+
+# Cache directories
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 9. Health check and entrypoint
+# ═══════════════════════════════════════════════════════════════════════════
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+WORKDIR /app
+
+# Default: start MLNode API
+CMD ["python3", "-m", "uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8080"]
