@@ -68,7 +68,7 @@ apt-get install -y build-essential g++ gcc
 #################################
 # 2. CUDA TOOLKIT (install if not present)
 #################################
-CUDA_VERSION="12-6"
+CUDA_VERSION="13-0"
 CUDA_PATH="/usr/local/cuda"
 
 if [ -d "$CUDA_PATH" ] && [ -x "$CUDA_PATH/bin/nvcc" ]; then
