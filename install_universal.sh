@@ -66,16 +66,40 @@ log_info "Installing build-essential for FlashInfer JIT..."
 apt-get install -y build-essential g++ gcc
 
 #################################
-# 2. CUDA_HOME (for environment, not required for vLLM)
+# 2. CUDA TOOLKIT (install if not present)
 #################################
-# vLLM wheels include bundled CUDA runtime — no CUDA Toolkit needed
-# Just set CUDA_HOME if available (for other tools)
-if [ -d "/usr/local/cuda" ]; then
-    CUDA_HOME="/usr/local/cuda"
-    log_info "CUDA_HOME: $CUDA_HOME (optional, vLLM uses bundled CUDA)"
+CUDA_VERSION="12-6"
+CUDA_PATH="/usr/local/cuda"
+
+if [ -d "$CUDA_PATH" ] && [ -x "$CUDA_PATH/bin/nvcc" ]; then
+    NVCC_VERSION=$("$CUDA_PATH/bin/nvcc" --version | grep "release" | sed 's/.*release //' | sed 's/,.*//')
+    log_success "CUDA Toolkit found: $NVCC_VERSION"
+    CUDA_HOME="$CUDA_PATH"
 else
-    CUDA_HOME=""
-    log_info "CUDA Toolkit not found — OK, vLLM uses bundled CUDA runtime"
+    log_info "CUDA Toolkit not found, installing CUDA $CUDA_VERSION..."
+
+    # Add NVIDIA CUDA repository
+    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/cuda-keyring.deb
+    dpkg -i /tmp/cuda-keyring.deb
+    apt-get update
+
+    # Install CUDA Toolkit (without driver - driver should already be installed)
+    apt-get install -y cuda-toolkit-${CUDA_VERSION}
+
+    # Update alternatives to point to new CUDA
+    if [ -d "/usr/local/cuda-${CUDA_VERSION//-/.}" ]; then
+        ln -sf "/usr/local/cuda-${CUDA_VERSION//-/.}" /usr/local/cuda
+    fi
+
+    CUDA_HOME="/usr/local/cuda"
+
+    if [ -x "$CUDA_HOME/bin/nvcc" ]; then
+        NVCC_VERSION=$("$CUDA_HOME/bin/nvcc" --version | grep "release" | sed 's/.*release //' | sed 's/,.*//')
+        log_success "CUDA Toolkit installed: $NVCC_VERSION"
+    else
+        log_warning "CUDA Toolkit installation may have issues, continuing anyway..."
+        CUDA_HOME=""
+    fi
 fi
 
 #################################
